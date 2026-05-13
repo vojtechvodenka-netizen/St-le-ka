@@ -1,282 +1,466 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AK-47 FPS</title>
+
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+html,body{
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:#000;
+    font-family:Courier New, monospace;
+}
+
+#game{
+    position:relative;
+    width:100vw;
+    height:100vh;
+    overflow:hidden;
+    cursor:none;
+    background:#101510;
+}
+
+canvas{
+    position:absolute;
+    inset:0;
+}
+
+#crosshair{
+    position:absolute;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+    color:#00ff00;
+    font-size:32px;
+    z-index:50;
+    pointer-events:none;
+    text-shadow:0 0 10px #0f0;
+}
+
+.enemy{
+    position:absolute;
+    width:50px;
+    height:100px;
+    z-index:10;
+}
+
+.enemy .body{
+    position:absolute;
+    width:22px;
+    height:40px;
+    background:#4f6b3c;
+    left:14px;
+    top:28px;
+    border-radius:4px;
+}
+
+.enemy .head{
+    position:absolute;
+    width:24px;
+    height:24px;
+    background:#c8956c;
+    border-radius:50%;
+    left:13px;
+    top:4px;
+}
+
+.enemy .leg1,
+.enemy .leg2{
+    position:absolute;
+    width:8px;
+    height:30px;
+    background:#3a3a3a;
+    bottom:0;
+}
+
+.enemy .leg1{left:15px;}
+.enemy .leg2{right:15px;}
+
+#hud{
+    position:absolute;
+    top:15px;
+    left:15px;
+    color:#88ff88;
+    z-index:100;
+    line-height:1.8;
+    text-shadow:0 0 6px #0f0;
+}
+
+#ammo{
+    position:absolute;
+    right:20px;
+    bottom:20px;
+    color:#fff;
+    font-size:22px;
+    z-index:100;
+}
+
+#gun{
+    position:absolute;
+    right:-30px;
+    bottom:-10px;
+    width:420px;
+    height:240px;
+    z-index:40;
+    pointer-events:none;
+    transition:transform 0.05s;
+}
+
+#msg{
+    position:absolute;
+    top:45%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    color:white;
+    font-size:32px;
+    z-index:200;
+    opacity:0;
+    transition:0.3s;
+    text-shadow:0 0 20px #fff;
+}
+
+.hit{
+    position:absolute;
+    color:red;
+    font-size:30px;
+    font-weight:bold;
+    z-index:200;
+    animation:pop 0.4s forwards;
+}
+
+@keyframes pop{
+    0%{
+        transform:scale(1);
+        opacity:1;
+    }
+
+    100%{
+        transform:scale(2);
+        opacity:0;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div id="game">
+
+<canvas id="bg"></canvas>
+
+<div id="crosshair">+</div>
+
+<div id="hud">
+    SCORE: <span id="score">0</span><br>
+    HITS: <span id="hits">0</span><br>
+    ROUND: <span id="round">1</span>
+</div>
+
+<div id="ammo">
+    <span id="ammoCount">30</span> / 30
+</div>
+
+<div id="msg"></div>
+
+<div id="gun">
+<svg viewBox="0 0 390 260" width="390" height="260">
+<g>
+<rect x="66" y="128" width="218" height="33" rx="5" fill="#2a2a2a"/>
+<rect x="260" y="117" width="76" height="18" rx="2" fill="#1a1a1a"/>
+<rect x="334" y="119" width="32" height="14" rx="1" fill="#111"/>
+<polygon points="158,161 192,161 186,208 152,208" fill="#222"/>
+<ellipse cx="275" cy="215" rx="42" ry="25" fill="#b07545"/>
+</g>
+</svg>
+</div>
+
+</div>
+
 <script>
-const game=document.getElementById('game');
-const canvas=document.getElementById('bg');
-const C=canvas.getContext('2d');
-const gunWrap=document.getElementById('gun-wrap');
-const mflash=document.getElementById('mflash');
-const sv=document.getElementById('sv'),hv=document.getElementById('hv'),rv=document.getElementById('rv');
-const an=document.getElementById('an'),pips=document.getElementById('ammo-pips'),rh=document.getElementById('reload-hint');
-const msgEl=document.getElementById('msg'),bannerEl=document.getElementById('banner');
+const game=document.getElementById("game");
+const canvas=document.getElementById("bg");
+const ctx=canvas.getContext("2d");
 
-let score=0,hits=0,ammo=30,MAX=30,round=1,reloading=false;
+const scoreEl=document.getElementById("score");
+const hitsEl=document.getElementById("hits");
+const roundEl=document.getElementById("round");
+const ammoEl=document.getElementById("ammoCount");
+const msg=document.getElementById("msg");
+const gun=document.getElementById("gun");
 
-/* VETSI ROZSAH KAMERY */
-let camX=1500,camY=0,targetCamX=1500,targetCamY=0;
+let score=0;
+let hits=0;
+let round=1;
+
+let ammo=30;
+let reloading=false;
+
+let camX=1500;
+let camY=0;
+
+let targetCamX=1500;
+let targetCamY=0;
 
 const WORLD=3000;
-const targets=[];
-const TREES=[90,310,570,820,1100,1380,1640,1900,2170,2440,2720,2940];
 
-function GW(){return game.offsetWidth;}
-function GH(){return game.offsetHeight;}
-function w2s(wx,wy){return[GW()/2+(wx-camX),GH()/2+(wy-camY)];}
+const enemies=[];
 
 function resize(){
-  canvas.width=GW();
-  canvas.height=GH();
+    canvas.width=window.innerWidth;
+    canvas.height=window.innerHeight;
 }
+
 resize();
 
-window.addEventListener('resize',()=>{resize();});
+window.addEventListener("resize",resize);
 
-function drawBg(){
-  const gw=canvas.width,gh=canvas.height,hz=gh*0.44;
+function GW(){ return canvas.width; }
+function GH(){ return canvas.height; }
 
-  C.clearRect(0,0,gw,gh);
-
-  C.fillStyle='#090e06';
-  C.fillRect(0,0,gw,hz);
-
-  C.fillStyle='#172b0c';
-  C.fillRect(0,hz,gw,gh*0.14);
-
-  C.fillStyle='#0e1806';
-  C.fillRect(0,hz+gh*0.14,gw,gh);
-
-  for(let i=0;i<8;i++){
-    const sx=((camX*0.015+i*160)%gw+gw)%gw;
-
-    C.fillStyle='rgba(255,255,210,0.5)';
-    C.beginPath();
-    C.arc(sx,gh*0.1,1.4,0,6.28);
-    C.fill();
-  }
-
-  TREES.forEach(tx=>{
-    const[sx]=w2s(tx,0);
-
-    if(sx<-90||sx>gw+90)return;
-
-    C.fillStyle='#2c1908';
-    C.fillRect(sx-10,hz-8,20,105);
-
-    C.fillStyle='#152e05';
-    C.beginPath();
-    C.moveTo(sx-30,hz+2);
-    C.lineTo(sx,hz-82);
-    C.lineTo(sx+30,hz+2);
-    C.fill();
-  });
+function w2s(wx,wy){
+    return [
+        GW()/2+(wx-camX),
+        GH()/2+(wy-camY)
+    ];
 }
 
-function soldierSVG(hp,mhp){
-  return `
-  <svg width="50" height="100" viewBox="0 0 50 100">
-    <rect x="15" y="20" width="20" height="40" fill="#4a5a3a"/>
-    <circle cx="25" cy="15" r="10" fill="#c8956c"/>
-  </svg>`;
+function drawBackground(){
+
+    const gw=GW();
+    const gh=GH();
+
+    ctx.clearRect(0,0,gw,gh);
+
+    ctx.fillStyle="#0d120d";
+    ctx.fillRect(0,0,gw,gh);
+
+    ctx.fillStyle="#1f381f";
+    ctx.fillRect(0,gh*0.5,gw,gh*0.5);
+
+    for(let i=0;i<40;i++){
+
+        const x=((i*300)-(camX*0.5)%300);
+
+        ctx.fillStyle="#1c2c1c";
+
+        ctx.fillRect(x,gh*0.35,40,200);
+
+        ctx.beginPath();
+        ctx.arc(x+20,gh*0.3,50,0,Math.PI*2);
+        ctx.fill();
+    }
 }
 
-function shieldSVG(hp,mhp){
-  return `
-  <svg width="58" height="78" viewBox="0 0 58 78">
-    <rect x="10" y="10" width="38" height="58" rx="8" fill="#3a8aee"/>
-  </svg>`;
+function spawnEnemy(){
+
+    const el=document.createElement("div");
+
+    el.className="enemy";
+
+    el.innerHTML=`
+        <div class="head"></div>
+        <div class="body"></div>
+        <div class="leg1"></div>
+        <div class="leg2"></div>
+    `;
+
+    game.appendChild(el);
+
+    const enemy={
+
+        el,
+
+        x:Math.random()*WORLD,
+
+        y:(Math.random()*700)-250,
+
+        w:50,
+
+        h:100
+    };
+
+    enemies.push(enemy);
+
+    updateEnemy(enemy);
 }
 
-function buildPips(){
-  pips.innerHTML='';
+function updateEnemy(e){
 
-  for(let i=0;i<MAX;i++){
-    const d=document.createElement('div');
-    d.className='pip'+(i>=ammo?' spent':'');
-    pips.appendChild(d);
-  }
+    const [sx,sy]=w2s(e.x,e.y);
 
-  an.textContent=ammo;
-  rh.style.display=ammo===0?'block':'none';
+    e.el.style.left=sx+"px";
+    e.el.style.top=sy+"px";
 }
 
-function spawn(){
+function updateEnemies(){
 
-  const isS=Math.random()<0.35;
-
-  const w=isS?58:50;
-  const h=isS?78:100;
-
-  const mhp=isS?(2+Math.min(round-1,2)):(1+Math.min(round-1,2));
-
-  const el=document.createElement('div');
-
-  el.className='target';
-
-  const wx=60+Math.random()*(WORLD-120);
-
-  /* ENEMY MUZOU I DOLU */
-  const wy=(Math.random()*600)-150;
-
-  el.style.cssText=`
-    position:absolute;
-    animation:bob ${1.4+Math.random()*0.8}s ease-in-out infinite;
-  `;
-
-  el.innerHTML=isS?shieldSVG(mhp,mhp):soldierSVG(mhp,mhp);
-
-  game.insertBefore(el,gunWrap);
-
-  const d={
-    isS,
-    w,
-    h,
-    hp:mhp,
-    mhp,
-    el,
-    wx,
-    wy,
-    pts:(isS?5:12)*round
-  };
-
-  targets.push(d);
-
-  posT(d);
+    enemies.forEach(updateEnemy);
 }
 
-function posT(t){
-  const[sx,sy]=w2s(t.wx,t.wy);
+function wave(){
 
-  t.el.style.left=sx+'px';
-  t.el.style.top=sy+'px';
+    for(let i=0;i<5+round;i++){
 
-  t.el.style.display=
-    (sx>-80&&sx<GW()+80&&sy>-130&&sy<GH()+130)
-    ?'block'
-    :'none';
+        setTimeout(spawnEnemy,i*250);
+    }
 }
 
-function allPos(){
-  targets.forEach(posT);
+function flashMessage(text){
+
+    msg.innerText=text;
+
+    msg.style.opacity=1;
+
+    setTimeout(()=>{
+        msg.style.opacity=0;
+    },1200);
 }
 
-function fireGun(){
+function reload(){
 
-  gunWrap.style.animation='none';
-  void gunWrap.offsetWidth;
+    if(reloading || ammo===30) return;
 
-  gunWrap.style.animation='recoil 0.2s ease-out forwards';
+    reloading=true;
 
-  mflash.style.animation='none';
-  void mflash.offsetWidth;
+    flashMessage("RELOADING");
 
-  mflash.style.animation='mflash 0.14s ease-out forwards';
+    setTimeout(()=>{
+
+        ammo=30;
+
+        ammoEl.innerText=ammo;
+
+        reloading=false;
+
+    },1500);
 }
 
 function shoot(){
 
-  if(reloading)return;
+    if(reloading) return;
 
-  if(ammo<=0)return;
+    if(ammo<=0){
 
-  ammo--;
+        flashMessage("PRESS R");
 
-  buildPips();
-
-  fireGun();
-
-  const cx=GW()/2;
-  const cy=GH()/2;
-
-  for(let i=targets.length-1;i>=0;i--){
-
-    const t=targets[i];
-
-    const[sx,sy]=w2s(t.wx,t.wy);
-
-    if(cx>=sx&&cx<=sx+t.w&&cy>=sy&&cy<=sy+t.h){
-
-      t.hp--;
-
-      if(t.hp<=0){
-
-        t.el.remove();
-
-        targets.splice(i,1);
-
-        score+=t.pts;
-
-        sv.textContent=score;
-      }
-
-      break;
+        return;
     }
-  }
+
+    ammo--;
+
+    ammoEl.innerText=ammo;
+
+    gun.style.transform="translateY(-20px) rotate(-5deg)";
+
+    setTimeout(()=>{
+        gun.style.transform="translateY(0px)";
+    },70);
+
+    const cx=GW()/2;
+    const cy=GH()/2;
+
+    for(let i=enemies.length-1;i>=0;i--){
+
+        const e=enemies[i];
+
+        const [sx,sy]=w2s(e.x,e.y);
+
+        if(
+            cx>=sx &&
+            cx<=sx+e.w &&
+            cy>=sy &&
+            cy<=sy+e.h
+        ){
+
+            hits++;
+            score+=10;
+
+            hitsEl.innerText=hits;
+            scoreEl.innerText=score;
+
+            const hit=document.createElement("div");
+
+            hit.className="hit";
+
+            hit.innerText="X";
+
+            hit.style.left=(sx+20)+"px";
+            hit.style.top=(sy+20)+"px";
+
+            game.appendChild(hit);
+
+            setTimeout(()=>{
+                hit.remove();
+            },400);
+
+            e.el.remove();
+
+            enemies.splice(i,1);
+
+            if(enemies.length===0){
+
+                round++;
+
+                roundEl.innerText=round;
+
+                flashMessage("ROUND "+round);
+
+                setTimeout(wave,1200);
+            }
+
+            break;
+        }
+    }
 }
 
-function doReload(){
+document.addEventListener("mousemove",e=>{
 
-  if(reloading||ammo===MAX)return;
+    const relX=e.clientX/window.innerWidth;
+    const relY=e.clientY/window.innerHeight;
 
-  reloading=true;
+    targetCamX=(relX-0.5)*WORLD*0.85+WORLD/2;
 
-  setTimeout(()=>{
-    ammo=MAX;
-    reloading=false;
-    buildPips();
-  },1500);
-}
-
-function wave(){
-  const n=5;
-
-  for(let i=0;i<n;i++){
-    setTimeout(spawn,i*250);
-  }
-}
-
-/* TED MUZES HYBAT I DOLU */
-game.addEventListener('mousemove',e=>{
-
-  const r=game.getBoundingClientRect();
-
-  const relX=(e.clientX-r.left)/r.width;
-  const relY=(e.clientY-r.top)/r.height;
-
-  targetCamX=(relX-0.5)*WORLD*0.85+WORLD/2;
-
-  /* VELKY VERTIKALNI POHYB */
-  targetCamY=(relY-0.5)*600;
+    /* HYBANI DOLU */
+    targetCamY=(relY-0.5)*700;
 });
 
-game.addEventListener('click',shoot);
+document.addEventListener("click",shoot);
 
-document.addEventListener('keydown',e=>{
-  if(e.key==='r'||e.key==='R')doReload();
+document.addEventListener("keydown",e=>{
+
+    if(e.key==="r" || e.key==="R"){
+
+        reload();
+    }
 });
 
-buildPips();
+function loop(){
+
+    requestAnimationFrame(loop);
+
+    camX+=(targetCamX-camX)*0.08;
+    camY+=(targetCamY-camY)*0.08;
+
+    camY=Math.max(-350,Math.min(350,camY));
+
+    drawBackground();
+
+    updateEnemies();
+}
+
 wave();
 
-let last=0;
-
-function loop(ts){
-
-  requestAnimationFrame(loop);
-
-  const dt=Math.min((ts-last)/16,3);
-
-  last=ts;
-
-  camX+=(targetCamX-camX)*0.1*dt;
-  camY+=(targetCamY-camY)*0.1*dt;
-
-  camX=Math.max(0,Math.min(WORLD,camX));
-
-  /* POVOLENI POHYBU DOLU */
-  camY=Math.max(-300,Math.min(300,camY));
-
-  drawBg();
-
-  allPos();
-}
-
-requestAnimationFrame(loop);
+loop();
 </script>
+
+</body>
+</html>
